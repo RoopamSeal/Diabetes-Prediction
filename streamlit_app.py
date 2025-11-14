@@ -1,142 +1,123 @@
 import streamlit as st
 import joblib
 import numpy as np
-import pandas as pd
-from xgboost import XGBClassifier
-from sklearn.preprocessing import StandardScaler
+from xgboost import XGBClassifier # Required to load the model class
+from sklearn.preprocessing import StandardScaler # Required to load the scaler class
 
-# --- 1. Load Saved Model and Scaler ---
-# Use st.cache_resource to load these assets only once
+# --- 1. Load the Saved Model and Scaler ---
+# Using st.cache_resource ensures the app loads these large files only once, making it fast.
 @st.cache_resource
 def load_assets():
-    """
-    Loads the saved StandardScaler and XGBoost model from disk.
-    """
+    """Loads the saved model and scaler from the disk."""
     try:
-        # Load the scaler fit on the 4 RFE features
-        scaler = joblib.load('scaler_rfe_4.joblib')
-        
-        # Load the trained XGBoost model (best Recall)
-        model = joblib.load('xgb_rfe_model.joblib')
-        
-        return scaler, model
+        # Load the fitted model and scaler
+        model = joblib.load('xgb_model.joblib')
+        scaler = joblib.load('scaler.joblib')
+        return model, scaler
     except FileNotFoundError:
-        # Display an error if the files are missing
-        st.error(
-            "Error: Model or Scaler file not found. "
-            "Please ensure 'scaler_rfe_4.joblib' and 'xgb_rfe_model.joblib' "
-            "are in the same directory as this app."
-        )
+        st.error("Error: Model or Scaler files not found.")
+        st.error("Please run the 'train_model.py' script first to create these assets.")
         return None, None
 
 # Load the assets
-scaler, model = load_assets()
+model, scaler = load_assets()
 
-# --- 2. Page Configuration and Title ---
+# --- 2. Set Up the Page Configuration ---
 st.set_page_config(
-    page_title="Pima Diabetes Predictor",
-    page_icon="🩺",
-    layout="centered",
-    initial_sidebar_state="collapsed"
+    page_title="Diabetes Risk Predictor",
+    page_icon="🩸",
+    layout="centered"
 )
 
-st.title("🩺 Pima Diabetes Risk Predictor")
+st.title("🩸 Pima Diabetes Risk Predictor")
 st.markdown(
-    "This app uses an **XGBoost** model, trained on the 4 most "
-    "predictive features, to estimate the risk of Type 2 Diabetes."
+    "Enter your health metrics below. This app uses a pre-trained **XGBoost model** "
+    "to estimate the likelihood of Type 2 Diabetes."
 )
 st.markdown("---")
 
-# Only run the app if the model and scaler loaded successfully
+# --- 3. Create Input Widgets for the 4 Prediction Features ---
+
 if model is not None and scaler is not None:
     
-    # --- 3. User Input Fields ---
-    st.subheader("Input Patient Data (Top 4 Features)")
-    st.caption(
-        "Please enter the values for the features identified by "
-        "Recursive Feature Elimination (RFE)."
-    )
+    st.subheader("Enter Health Metrics (4 Key Features)")
     
-    # Create two columns for a cleaner layout
+    # Use columns for a cleaner, two-column layout
     col1, col2 = st.columns(2)
     
+    # Input Fields (must be gathered in the correct order for scaling)
     with col1:
+        # 1. Glucose
         glucose = st.number_input(
             "Glucose (mg/dL)",
             min_value=40.0, max_value=200.0, value=120.0, step=1.0,
             help="Plasma glucose concentration (2-hour oral test)."
         )
         
-        age = st.number_input(
-            "Age (Years)",
-            min_value=21, max_value=100, value=35, step=1,
-            help="Patient's age."
-        )
-    
-    with col2:
+        # 2. BMI
         bmi = st.number_input(
             "BMI (Body Mass Index)",
             min_value=15.0, max_value=70.0, value=32.0, step=0.1,
             help="Weight (kg) / (height (m))^2."
         )
+
+    with col2:
+        # 3. Age
+        age = st.number_input(
+            "Age (Years)",
+            min_value=21, max_value=100, value=35, step=1
+        )
         
-        dpf = st.number_input(
-            "Diabetes Pedigree Function",
-            min_value=0.07, max_value=2.50, value=0.47, step=0.01,
-            format="%.3f",
-            help="Genetic risk factor based on family history."
+        # 4. Blood Pressure
+        bp = st.number_input(
+            "Blood Pressure (mm Hg)",
+            min_value=40.0, max_value=140.0, value=72.0, step=1.0,
+            help="Diastolic blood pressure."
         )
 
     st.markdown("---")
 
-    # --- 4. Prediction Logic ---
+    # --- 4. Prediction Button and Logic ---
     if st.button("Analyze Risk", type="primary"):
-        # Create a 2D NumPy array in the correct feature order
-        # This order MUST match the one used to train the scaler
+        
+        # 1. Prepare Input Data (CRITICAL STEP: Order MUST match training order)
+        # Assumed Order: ['Glucose', 'BMI', 'Age', 'BloodPressure']
         input_data = np.array([[
             glucose,
             bmi,
             age,
-            dpf
+            bp
         ]])
         
-        # Apply the loaded StandardScaler
+        # 2. Scale the input data using the loaded scaler.
         input_scaled = scaler.transform(input_data)
         
-        # Get the probability of the positive class (Diabetes)
+        # 3. Make the prediction (Get the probability of the positive class: Diabetes=1)
         prediction_proba = model.predict_proba(input_scaled)[0][1]
         risk_percentage = prediction_proba * 100
         
-        # --- 5. Display Results ---
-        st.subheader("Prediction Result")
+        # --- 5. Display the Result ---
+        st.subheader("Final Risk Assessment")
         
-        # Use a 0.5 threshold for classification
+        # Classify and display result
         if prediction_proba >= 0.5:
-            st.error(f"**High Risk ({risk_percentage:.1f}%)**", icon="🚨")
+            st.error(f"**High Risk** - Probability: {risk_percentage:.1f}%", icon="🚨")
             st.warning(
-                "The model predicts a high likelihood of diabetes. "
-                "Consultation with a healthcare professional is strongly recommended."
+                "The model indicates a high likelihood of a positive diagnosis. "
+                "Immediate medical consultation is essential for accurate assessment."
             )
         else:
-            st.success(f"**Low Risk ({risk_percentage:.1f}%)**", icon="✅")
+            st.success(f"**Low Risk** - Probability: {risk_percentage:.1f}%", icon="✅")
             st.info(
-                "The model predicts a low likelihood of diabetes. "
-                "Continue to maintain a healthy lifestyle and monitor vitals."
+                "The predicted risk is low. Maintain a healthy lifestyle and continue "
+                "with regular monitoring."
             )
         
-        # Show technical details in an expander
-        with st.expander("Show Technical Details"):
-            st.write(f"**Model Used:** XGBoost Classifier (RFE-selected features)")
-            st.write(f"**Probability (P(Diabetes=1)):** {prediction_proba:.4f}")
-            st.write(f"**Input Features (Unscaled):**")
-            st.json({
-                "Glucose": glucose,
-                "BMI": bmi,
-                "Age": age,
-                "DiabetesPedigreeFunction": dpf
-            })
+        # Show technical details
+        with st.expander("Show Model Details"):
+            st.write(f"**Model Used:** XGBoost Classifier")
+            st.write(f"**Prediction Probability (P(Diabetes=1)):** {prediction_proba:.4f}")
+            st.write(f"**Features Used for Prediction:** Glucose, BMI, Age, Blood Pressure (Scaled)")
 
 else:
-    st.error(
-        "Application cannot start. Please check the console for file-loading errors."
-    )
+    st.warning("Application assets are missing. Please run the training script first.")
