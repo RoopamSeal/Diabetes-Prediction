@@ -29,7 +29,7 @@ st.set_page_config(
     layout="centered"
 )
 
-st.title("🩸 Pima Diabetes Risk Predictor")
+st.title("Diabetes Risk Predictor")
 st.markdown(
     "Enter your health metrics below. This app uses a pre-trained **XGBoost model** "
     "to estimate the likelihood of Type 2 Diabetes."
@@ -57,7 +57,7 @@ if model is not None and scaler is not None:
         # 2. BMI
         bmi = st.number_input(
             "BMI (Body Mass Index)",
-            min_value=15.0, max_value=70.0, value=32.0, step=0.1,
+            min_value=15.0, max_value=70.0, value=32.0, step=1.0,
             help="Weight (kg) / (height (m))^2."
         )
 
